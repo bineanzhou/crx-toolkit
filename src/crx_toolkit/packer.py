@@ -22,45 +22,216 @@ def setup_logging(verbose: bool = False):
         ]
     )
 
+def get_node_path() -> str:
+    """获取 Node.js 可执行文件路径"""
+    try:
+        # Windows 系统
+        if os.name == 'nt':
+            # 检查常见安装路径
+            common_paths = [
+                os.path.expandvars(r'%ProgramFiles%\nodejs\node.exe'),
+                os.path.expandvars(r'%ProgramFiles(x86)%\nodejs\node.exe'),
+                os.path.expandvars(r'%APPDATA%\npm\node.exe'),
+                # 添加其他可能的安装路径
+            ]
+            
+            # 首先检查 PATH 环境变量
+            if 'PATH' in os.environ:
+                for path in os.environ['PATH'].split(os.pathsep):
+                    node_exe = os.path.join(path.strip('"'), 'node.exe')
+                    if os.path.isfile(node_exe):
+                        return node_exe
+            
+            # 然后检查常见安装路径
+            for path in common_paths:
+                if os.path.isfile(path):
+                    return path
+                    
+        # Linux/Mac 系统
+        else:
+            # 使用 which 命令查找
+            try:
+                result = subprocess.run(['which', 'node'], capture_output=True, text=True)
+                if result.returncode == 0:
+                    return result.stdout.strip()
+            except:
+                pass
+                
+            # 检查常见安装路径
+            common_paths = [
+                '/usr/bin/node',
+                '/usr/local/bin/node',
+                '/opt/node/bin/node'
+            ]
+            for path in common_paths:
+                if os.path.isfile(path):
+                    return path
+                    
+        return 'node'  # 如果找不到，返回默认命令
+    except Exception as e:
+        logging.debug(f"查找 Node.js 路径时发生错误: {str(e)}")
+        return 'node'
+
+def check_nodejs_installed() -> bool:
+    """检查 Node.js 和 npm 是否已安装"""
+    try:
+        node_path = get_node_path()
+        npm_cmd = 'npm.cmd' if os.name == 'nt' else 'npm'
+        
+        # 检查 node 版本
+        node_result = subprocess.run(
+            [node_path, '--version'], 
+            capture_output=True, 
+            text=True,
+            env=os.environ.copy()  # 使用当前环境变量
+        )
+        if node_result.returncode != 0:
+            logging.error("Node.js 未安装，请先安装 Node.js: https://nodejs.org/")
+            return False
+            
+        # 检查 npm 版本
+        npm_result = subprocess.run(
+            [npm_cmd, '--version'],
+            capture_output=True,
+            text=True,
+            env=os.environ.copy()  # 使用当前环境变量
+        )
+        if npm_result.returncode != 0:
+            logging.error("npm 未安装或损坏，请重新安装 Node.js")
+            return False
+            
+        logging.info(f"检测到 Node.js {node_result.stdout.strip()} 和 npm {npm_result.stdout.strip()}")
+        return True
+    except FileNotFoundError:
+        logging.error("Node.js 未安装，请先安装 Node.js: https://nodejs.org/")
+        return False
+    except Exception as e:
+        logging.error(f"检查 Node.js 时发生错误: {str(e)}")
+        return False
+
+def install_terser() -> bool:
+    """安装 terser"""
+    try:
+        # 首先检查 Node.js 环境
+        if not check_nodejs_installed():
+            return False
+            
+        logging.info("正在安装 terser...")
+        npm_cmd = 'npm.cmd' if os.name == 'nt' else 'npm'
+        
+        # 确保在项目目录中有 package.json
+        if not os.path.exists('package.json'):
+            logging.info("初始化 package.json...")
+            init_result = subprocess.run(
+                [npm_cmd, 'init', '-y'],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=os.environ.copy()  # 使用当前环境变量
+            )
+            if init_result.returncode != 0:
+                logging.error(f"初始化 package.json 失败: {init_result.stderr}")
+                return False
+        
+        # 安装 terser
+        result = subprocess.run(
+            [npm_cmd, 'install', 'terser', '--save-dev'],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=os.environ.copy()  # 使用当前环境变量
+        )
+        
+        if result.returncode == 0:
+            logging.info("terser 安装成功")
+            return True
+        else:
+            logging.error(f"terser 安装失败: {result.stderr}")
+            return False
+    except Exception as e:
+        logging.error(f"安装 terser 时发生错误: {str(e)}")
+        return False
+
+def check_terser_installed() -> bool:
+    """检查 terser 是否已安装"""
+    try:
+        # 首先检查 Node.js 环境
+        if not check_nodejs_installed():
+            return False
+            
+        # 检查本地安装的 terser
+        npx_cmd = 'npx.cmd' if os.name == 'nt' else 'npx'
+        result = subprocess.run(
+            [npx_cmd, 'terser', '--version'], 
+            capture_output=True, 
+            text=True,
+            check=False,
+            env=os.environ.copy()  # 使用当前环境变量
+        )
+        
+        if result.returncode == 0:
+            logging.info(f"检测到 terser 版本: {result.stdout.strip()}")
+            return True
+            
+        # 如果 npx 检查失败，尝试直接检查全局安装的 terser
+        terser_cmd = 'terser.cmd' if os.name == 'nt' else 'terser'
+        result = subprocess.run(
+            [terser_cmd, '--version'],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=os.environ.copy()
+        )
+        
+        if result.returncode == 0:
+            logging.info(f"检测到全局安装的 terser 版本: {result.stdout.strip()}")
+            return True
+            
+        return False
+    except Exception as e:
+        logging.error(f"检查 terser 时发生错误: {str(e)}")
+        return False
+
+def ensure_terser_available() -> bool:
+    """确保 terser 可用，如果未安装则尝试安装"""
+    if check_terser_installed():
+        return True
+        
+    logging.info("terser 未安装，尝试自动安装...")
+    if install_terser():
+        return check_terser_installed()
+    return False
+
 def minify_js_file(input_path: str, output_path: str) -> bool:
     """使用 terser 混淆 JavaScript 文件"""
     try:
-        # 检查 terser 是否已安装
-        try:
-            subprocess.run(['terser', '--version'], capture_output=True, check=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            logging.warning("terser 未安装，跳过代码混淆")
-            return False
-
-        # 运行 terser 混淆代码
-        # 使用 --mangle 进行变量名混淆
-        # 使用 --mangle-props 混淆属性名
-        # 使用 --toplevel 允许顶级作用域的变量名混淆
-        result = subprocess.run(
-            [
-                'terser',
-                input_path,
-                '--mangle',
-                '--mangle-props',
-                '--toplevel',
-                '--output', output_path
-            ],
-            capture_output=True,
-            text=True,
-            check=True
-        )
+        # 构建 terser 命令
+        npx_cmd = 'npx.cmd' if os.name == 'nt' else 'npx'
+        cmd = [
+            npx_cmd, 'terser', input_path,
+            '--compress', 'passes=3,pure_funcs=[console.log],drop_console=true,'
+                        'unsafe=true,dead_code=true,toplevel=true,evaluate=true',
+            '--mangle', 'toplevel=true,eval=true,reserved=[chrome,browser]',
+            '--format', 'comments=false,beautify=false',
+            '--output', output_path
+        ]
         
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+        # 运行 terser
+        result = subprocess.run(cmd, capture_output=True, text=True, env=os.environ.copy())
+        
+        if result.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
             orig_size = os.path.getsize(input_path)
             new_size = os.path.getsize(output_path)
             saved = ((orig_size - new_size) / orig_size) * 100
             logging.info(f"混淆 {os.path.basename(input_path)}: {orig_size} -> {new_size} 字节 (减少 {saved:.1f}%)")
             return True
             
+        if result.stderr:
+            logging.warning(f"混淆失败输出: {result.stderr}")
         return False
         
     except subprocess.CalledProcessError as e:
-        logging.warning(f"混淆 {input_path} 失败: {e.stderr}")
+        logging.warning(f"混淆 {input_path} 失败: {e.stderr if e.stderr else str(e)}")
         return False
     except Exception as e:
         logging.warning(f"混淆 {input_path} 时发生错误: {str(e)}")
@@ -84,7 +255,7 @@ def pack_extension(
         force: 是否强制覆盖已存在的文件
         verbose: 是否启用详细日志
         no_verify: 是否跳过签名验证
-        use_terser: 是否使用 terser 压缩 JavaScript 代码
+        use_terser: 是否使用 terser 混淆 JavaScript 代码
     
     Returns:
         str: 生成的CRX文件路径
@@ -93,6 +264,13 @@ def pack_extension(
     setup_logging(verbose)
     
     try:
+        # 如果启用了terser，确保其可用
+        terser_available = False
+        if use_terser:
+            terser_available = ensure_terser_available()
+            if not terser_available:
+                logging.warning("无法安装或使用 terser，将跳过所有JS代码混淆")
+        
         # 验证源目录
         if not os.path.isdir(source_dir):
             raise ValueError(f"源目录不存在: {source_dir}")
@@ -175,13 +353,13 @@ def pack_extension(
                 target_path = os.path.join(temp_dir, rel_path)
                 os.makedirs(os.path.dirname(target_path), exist_ok=True)
                 
-                # 如果启用了terser且是JS文件，尝试压缩
-                if use_terser and rel_path.endswith('.js'):
+                # 如果启用了terser且是JS文件，尝试混淆
+                if use_terser and terser_available and rel_path.endswith('.js'):
                     if minify_js_file(abs_path, target_path):
                         processed_files.append((rel_path, target_path))
                         continue
                 
-                # 如果不需要压缩或压缩失败，直接复制
+                # 如果不需要混淆或混淆失败，直接复制
                 import shutil
                 shutil.copy2(abs_path, target_path)
                 processed_files.append((rel_path, target_path))
