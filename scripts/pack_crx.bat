@@ -17,6 +17,7 @@ set "OUTPUT_DIR=output"
 set "DEBUG="
 set "FORCE="
 set "NO_VERIFY="
+set "USE_TERSER="
 
 REM 记录开始执行
 call :log "=== 开始解析参数 ==="
@@ -63,6 +64,7 @@ if "!_arg:~0,1!" == "-" (
     if /i "!_arg!" == "-f" set "FORCE=--force" & call :log "启用强制打包" & shift & goto :parse_args
     if /i "!_arg!" == "--force" set "FORCE=--force" & call :log "启用强制打包" & shift & goto :parse_args
     if /i "!_arg!" == "--no-verify" set "NO_VERIFY=--no-verify" & call :log "禁用签名验证" & shift & goto :parse_args
+    if /i "!_arg!" == "--use-terser" set "USE_TERSER=--use-terser" & call :log "启用JS代码压缩" & shift & goto :parse_args
     
     REM 未知选项
     call :log_warning "未知选项: !_arg!"
@@ -216,6 +218,10 @@ if defined NO_VERIFY (
     set "PY_ARGS=!PY_ARGS! --no-verify"
     call :log "禁用验证"
 )
+if defined USE_TERSER (
+    set "PY_ARGS=!PY_ARGS! --use-terser"
+    call :log "启用JS代码压缩"
+)
 
 REM 执行Python命令
 call :log "执行命令: "!VENV_PYTHON!" -m crx_toolkit.cli !PY_ARGS!"
@@ -238,8 +244,6 @@ call :log "扩展打包成功"
 call :log "=== 打包任务结束 ==="
 echo Successfully packed extension
 exit /b 0 
-
-
 
 REM 日志函数
 :log
@@ -271,10 +275,12 @@ echo   -o, --output       指定输出目录 (默认: output)
 echo   -d, --debug        启用详细输出模式 (--verbose)
 echo   -f, --force        强制重新打包
 echo   --no-verify        禁用签名验证
+echo   --use-terser      启用JavaScript代码压缩
 echo.
 echo 示例:
 echo   %~n0 "扩展目录" "private.pem"
 echo   %~n0 -o "my_crx" "扩展目录" "private.pem"
 echo   %~n0 -d "扩展目录" "private.pem"
+echo   %~n0 --use-terser "扩展目录" "private.pem"
 echo.
 exit /b 1

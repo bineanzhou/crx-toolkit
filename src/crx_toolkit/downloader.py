@@ -13,7 +13,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('crx_download.log'),
+        logging.FileHandler('crx_download.log', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )

@@ -1,7 +1,10 @@
 import os
 import json
 import logging
-from typing import Optional
+import subprocess
+import tempfile
+import zipfile
+from typing import Optional, List, Tuple
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import hashes
@@ -14,18 +17,63 @@ def setup_logging(verbose: bool = False):
         level=level,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler('crx_pack.log'),
+            logging.FileHandler('crx_pack.log', encoding='utf-8'),
             logging.StreamHandler()
         ]
     )
+
+def minify_js_file(input_path: str, output_path: str) -> bool:
+    """使用 terser 混淆 JavaScript 文件"""
+    try:
+        # 检查 terser 是否已安装
+        try:
+            subprocess.run(['terser', '--version'], capture_output=True, check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            logging.warning("terser 未安装，跳过代码混淆")
+            return False
+
+        # 运行 terser 混淆代码
+        # 使用 --mangle 进行变量名混淆
+        # 使用 --mangle-props 混淆属性名
+        # 使用 --toplevel 允许顶级作用域的变量名混淆
+        result = subprocess.run(
+            [
+                'terser',
+                input_path,
+                '--mangle',
+                '--mangle-props',
+                '--toplevel',
+                '--output', output_path
+            ],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            orig_size = os.path.getsize(input_path)
+            new_size = os.path.getsize(output_path)
+            saved = ((orig_size - new_size) / orig_size) * 100
+            logging.info(f"混淆 {os.path.basename(input_path)}: {orig_size} -> {new_size} 字节 (减少 {saved:.1f}%)")
+            return True
+            
+        return False
+        
+    except subprocess.CalledProcessError as e:
+        logging.warning(f"混淆 {input_path} 失败: {e.stderr}")
+        return False
+    except Exception as e:
+        logging.warning(f"混淆 {input_path} 时发生错误: {str(e)}")
+        return False
 
 def pack_extension(
     source_dir: str, 
     private_key_path: str, 
     output_dir: str, 
-    force: bool = False,
+    force: bool = True,
     verbose: bool = False,
-    no_verify: bool = False
+    no_verify: bool = False,
+    use_terser: bool = False
 ) -> str:
     """打包 Chrome 扩展为 CRX 文件
     
@@ -36,6 +84,7 @@ def pack_extension(
         force: 是否强制覆盖已存在的文件
         verbose: 是否启用详细日志
         no_verify: 是否跳过签名验证
+        use_terser: 是否使用 terser 压缩 JavaScript 代码
     
     Returns:
         str: 生成的CRX文件路径
@@ -61,7 +110,7 @@ def pack_extension(
             logging.info(f"  名称: {manifest.get('name', 'Unknown')}")
             logging.info(f"  版本: {manifest.get('version', 'Unknown')}")
             logging.info(f"  描述: {manifest.get('description', 'No description')}")
-        
+            
         # 验证私钥文件
         if not os.path.exists(private_key_path):
             raise ValueError(f"私钥文件不存在: {private_key_path}")
@@ -117,57 +166,76 @@ def pack_extension(
                     
         logging.info(f"找到 {len(files_to_pack)} 个文件需要打包")
         
-        # 创建 ZIP 文件
-        import zipfile
-        zip_path = output_file + '.zip'
-        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for rel_path, abs_path in files_to_pack:
-                zf.write(abs_path, rel_path)
-        logging.info("ZIP 文件创建完成")
-        
-        # 读取 ZIP 内容
-        with open(zip_path, 'rb') as f:
-            zip_data = f.read()
-        
-        # 计算签名
-        if not no_verify:
-            signature = private_key.sign(
-                zip_data,
-                padding.PKCS1v15(),
-                hashes.SHA256()
-            )
-            logging.info("签名计算完成")
+        # 创建临时目录用于处理文件
+        with tempfile.TemporaryDirectory() as temp_dir:
+            processed_files = []
             
-            # 获取公钥
-            public_key = private_key.public_key()
-            public_key_bytes = public_key.public_bytes(
-                encoding=serialization.Encoding.DER,
-                format=serialization.PublicFormat.PKCS1
-            )
-            logging.info("公钥提取完成")
-        else:
-            logging.warning("跳过签名验证")
-            signature = b''
-            public_key_bytes = b''
-        
-        # 写入 CRX 文件
-        with open(output_file, 'wb') as f:
-            # CRX3 格式头部
-            f.write(b'Cr24')  # Magic number
-            f.write((3).to_bytes(4, byteorder='little'))  # Version
-            f.write(len(public_key_bytes).to_bytes(4, byteorder='little'))
-            f.write(len(signature).to_bytes(4, byteorder='little'))
-            f.write(public_key_bytes)
-            f.write(signature)
-            f.write(zip_data)
-        
-        # 清理临时文件
-        os.remove(zip_path)
-        logging.info("临时文件清理完成")
-        
-        logging.info(f"扩展打包成功: {output_file}")
-        return output_file
-        
+            # 处理所有文件
+            for rel_path, abs_path in files_to_pack:
+                target_path = os.path.join(temp_dir, rel_path)
+                os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                
+                # 如果启用了terser且是JS文件，尝试压缩
+                if use_terser and rel_path.endswith('.js'):
+                    if minify_js_file(abs_path, target_path):
+                        processed_files.append((rel_path, target_path))
+                        continue
+                
+                # 如果不需要压缩或压缩失败，直接复制
+                import shutil
+                shutil.copy2(abs_path, target_path)
+                processed_files.append((rel_path, target_path))
+            
+            # 创建 ZIP 文件
+            zip_path = output_file + '.zip'
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for rel_path, abs_path in processed_files:
+                    zf.write(abs_path, rel_path)
+            logging.info("ZIP 文件创建完成")
+            
+            # 读取 ZIP 内容
+            with open(zip_path, 'rb') as f:
+                zip_data = f.read()
+            
+            # 计算签名
+            if not no_verify:
+                signature = private_key.sign(
+                    zip_data,
+                    padding.PKCS1v15(),
+                    hashes.SHA256()
+                )
+                logging.info("签名计算完成")
+                
+                # 获取公钥
+                public_key = private_key.public_key()
+                public_key_bytes = public_key.public_bytes(
+                    encoding=serialization.Encoding.DER,
+                    format=serialization.PublicFormat.PKCS1
+                )
+                logging.info("公钥提取完成")
+            else:
+                logging.warning("跳过签名验证")
+                signature = b''
+                public_key_bytes = b''
+            
+            # 写入 CRX 文件
+            with open(output_file, 'wb') as f:
+                # CRX3 格式头部
+                f.write(b'Cr24')  # Magic number
+                f.write((3).to_bytes(4, byteorder='little'))  # Version
+                f.write(len(public_key_bytes).to_bytes(4, byteorder='little'))
+                f.write(len(signature).to_bytes(4, byteorder='little'))
+                f.write(public_key_bytes)
+                f.write(signature)
+                f.write(zip_data)
+            
+            # 清理临时文件
+            os.remove(zip_path)
+            logging.info("临时文件清理完成")
+            
+            logging.info(f"扩展打包成功: {output_file}")
+            return output_file
+            
     except Exception as e:
         logging.error(f"打包失败: {str(e)}", exc_info=True)
         raise

@@ -18,7 +18,8 @@ def cli():
 @click.option('--force', is_flag=True, help='强制覆盖已存在的文件')
 @click.option('--verbose', is_flag=True, help='启用详细输出')
 @click.option('--no-verify', is_flag=True, help='跳过签名验证')
-def pack(source, key, output, force, verbose, no_verify):
+@click.option('--use-terser', is_flag=True, help='使用 terser 压缩 JavaScript 代码')
+def pack(source, key, output, force, verbose, no_verify, use_terser):
     """打包 Chrome 扩展为 CRX 文件"""
     try:
         result = pack_extension(
@@ -27,7 +28,8 @@ def pack(source, key, output, force, verbose, no_verify):
             output_dir=output,
             force=force,
             verbose=verbose,
-            no_verify=no_verify
+            no_verify=no_verify,
+            use_terser=use_terser
         )
         click.echo(f"打包成功: {result}")
     except Exception as e:
