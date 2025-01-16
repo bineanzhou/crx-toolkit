@@ -42,8 +42,9 @@ def main(args: Optional[List[str]] = None) -> int:
     # pack 命令
     pack_parser = subparsers.add_parser('pack', help='打包扩展')
     pack_parser.add_argument('-s', '--source', required=True, help='扩展源目录路径')
-    pack_parser.add_argument('-k', '--key', required=True, help='私钥文件路径')
+    pack_parser.add_argument('-k', '--key', help='私钥文件路径（仅在打包为crx格式时需要）')
     pack_parser.add_argument('-o', '--output', required=True, help='输出目录路径')
+    pack_parser.add_argument('--format', choices=['crx', 'zip'], default='crx', help='打包格式: crx 或 zip (默认: crx)')
     pack_parser.add_argument('-f', '--force', action='store_true', help='覆盖已存在的文件')
     pack_parser.add_argument('--no-force', action='store_true', help='不覆盖已存在的文件')
     pack_parser.add_argument('-v', '--verbose', action='store_true', help='启用详细日志')
@@ -77,6 +78,11 @@ def main(args: Optional[List[str]] = None) -> int:
             # 处理 force 参数的优先级
             force = parsed_args.force if parsed_args.force else not parsed_args.no_force
             
+            # 检查私钥参数
+            if parsed_args.format == 'crx' and not parsed_args.key:
+                logging.error("打包为crx格式时必须提供私钥文件")
+                return 1
+            
             pack_extension(
                 source_dir=parsed_args.source,
                 private_key_path=parsed_args.key,
@@ -84,7 +90,8 @@ def main(args: Optional[List[str]] = None) -> int:
                 force=force,
                 verbose=parsed_args.verbose,
                 no_verify=parsed_args.no_verify,
-                use_terser=parsed_args.use_terser
+                use_terser=parsed_args.use_terser,
+                use_zip=parsed_args.format == 'zip'
             )
         elif parsed_args.command == 'download':
             # 处理 force 参数的优先级

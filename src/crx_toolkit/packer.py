@@ -244,26 +244,28 @@ def minify_js_file(input_path: str, output_path: str) -> bool:
 
 def pack_extension(
     source_dir: str, 
-    private_key_path: str, 
+    private_key_path: Optional[str], 
     output_dir: str, 
     force: bool = True,
     verbose: bool = False,
     no_verify: bool = False,
-    use_terser: bool = False
+    use_terser: bool = False,
+    use_zip: bool = False
 ) -> str:
-    """打包 Chrome 扩展为 CRX 文件
+    """打包 Chrome 扩展
     
     Args:
         source_dir: 扩展源目录路径
-        private_key_path: 私钥文件路径
+        private_key_path: 私钥文件路径，如果为None则打包为zip格式
         output_dir: 输出目录路径
         force: 是否强制覆盖已存在的文件
         verbose: 是否启用详细日志
         no_verify: 是否跳过签名验证
         use_terser: 是否使用 terser 混淆 JavaScript 代码
+        use_zip: 是否使用zip格式打包
     
     Returns:
-        str: 生成的CRX文件路径
+        str: 生成的文件路径
     """
     # 设置日志配置
     setup_logging(verbose=verbose, log_file='crx_pack.log')
@@ -294,21 +296,22 @@ def pack_extension(
             logging.info(f"  版本: {manifest.get('version', 'Unknown')}")
             logging.info(f"  描述: {manifest.get('description', 'No description')}")
             
-        # 验证私钥文件
-        if not os.path.exists(private_key_path):
-            raise ValueError(f"私钥文件不存在: {private_key_path}")
-        logging.info(f"私钥文件验证通过: {private_key_path}")
-        
-        # 读取私钥
-        with open(private_key_path, 'rb') as f:
-            try:
-                private_key = serialization.load_pem_private_key(
-                    f.read(),
-                    password=None
-                )
-                logging.info("成功加载私钥")
-            except Exception as e:
-                raise ValueError(f"私钥文件无效: {str(e)}")
+        # 验证私钥文件（仅在crx格式时需要）
+        if not use_zip:
+            if not private_key_path or not os.path.exists(private_key_path):
+                raise ValueError(f"私钥文件不存在: {private_key_path}")
+            logging.info(f"私钥文件验证通过: {private_key_path}")
+            
+            # 读取私钥
+            with open(private_key_path, 'rb') as f:
+                try:
+                    private_key = serialization.load_pem_private_key(
+                        f.read(),
+                        password=None
+                    )
+                    logging.info("成功加载私钥")
+                except Exception as e:
+                    raise ValueError(f"私钥文件无效: {str(e)}")
         
         # 确保输出目录存在
         ensure_dir(output_dir)
@@ -317,7 +320,8 @@ def pack_extension(
         # 构建输出文件名
         extension_name = manifest.get('name', '').replace(' ', '_')
         version = manifest.get('version', 'unknown')
-        output_file = os.path.join(output_dir, f"{extension_name}-{version}.crx")
+        extension = 'zip' if use_zip else 'crx'
+        output_file = os.path.join(output_dir, f"{extension_name}-{version}.{extension}")
         
         # 检查是否需要强制覆盖
         if os.path.exists(output_file):
@@ -369,52 +373,59 @@ def pack_extension(
                 shutil.copy2(abs_path, target_path)
                 processed_files.append((rel_path, target_path))
             
-            # 创建 ZIP 文件
-            zip_path = output_file + '.zip'
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                for rel_path, abs_path in processed_files:
-                    zf.write(abs_path, rel_path)
-            logging.info("ZIP 文件创建完成")
-            
-            # 读取 ZIP 内容
-            with open(zip_path, 'rb') as f:
-                zip_data = f.read()
-            
-            # 计算签名
-            if not no_verify:
-                signature = private_key.sign(
-                    zip_data,
-                    padding.PKCS1v15(),
-                    hashes.SHA256()
-                )
-                logging.info("签名计算完成")
-                
-                # 获取公钥
-                public_key = private_key.public_key()
-                public_key_bytes = public_key.public_bytes(
-                    encoding=serialization.Encoding.DER,
-                    format=serialization.PublicFormat.PKCS1
-                )
-                logging.info("公钥提取完成")
+            if use_zip:
+                # 直接创建ZIP文件
+                with zipfile.ZipFile(output_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for rel_path, abs_path in processed_files:
+                        zf.write(abs_path, rel_path)
+                logging.info(f"ZIP文件创建完成: {output_file}")
             else:
-                logging.warning("跳过签名验证")
-                signature = b''
-                public_key_bytes = b''
-            
-            # 写入 CRX 文件
-            with open(output_file, 'wb') as f:
-                # CRX3 格式头部
-                f.write(b'Cr24')  # Magic number
-                f.write((3).to_bytes(4, byteorder='little'))  # Version
-                f.write(len(public_key_bytes).to_bytes(4, byteorder='little'))
-                f.write(len(signature).to_bytes(4, byteorder='little'))
-                f.write(public_key_bytes)
-                f.write(signature)
-                f.write(zip_data)
-            
-            # 清理临时文件
-            os.remove(zip_path)
-            logging.info("临时文件清理完成")
+                # 创建临时ZIP文件
+                zip_path = output_file + '.zip'
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for rel_path, abs_path in processed_files:
+                        zf.write(abs_path, rel_path)
+                logging.info("ZIP文件创建完成")
+                
+                # 读取ZIP内容
+                with open(zip_path, 'rb') as f:
+                    zip_data = f.read()
+                
+                # 计算签名
+                if not no_verify:
+                    signature = private_key.sign(
+                        zip_data,
+                        padding.PKCS1v15(),
+                        hashes.SHA256()
+                    )
+                    logging.info("签名计算完成")
+                    
+                    # 获取公钥
+                    public_key = private_key.public_key()
+                    public_key_bytes = public_key.public_bytes(
+                        encoding=serialization.Encoding.DER,
+                        format=serialization.PublicFormat.PKCS1
+                    )
+                    logging.info("公钥提取完成")
+                else:
+                    logging.warning("跳过签名验证")
+                    signature = b''
+                    public_key_bytes = b''
+                
+                # 写入CRX文件
+                with open(output_file, 'wb') as f:
+                    # CRX3格式头部
+                    f.write(b'Cr24')  # Magic number
+                    f.write((3).to_bytes(4, byteorder='little'))  # Version
+                    f.write(len(public_key_bytes).to_bytes(4, byteorder='little'))
+                    f.write(len(signature).to_bytes(4, byteorder='little'))
+                    f.write(public_key_bytes)
+                    f.write(signature)
+                    f.write(zip_data)
+                
+                # 清理临时文件
+                os.remove(zip_path)
+                logging.info("临时文件清理完成")
             
             logging.info(f"扩展打包成功: {output_file}")
             return output_file
@@ -424,7 +435,7 @@ def pack_extension(
         raise
     finally:
         # 清理可能存在的临时文件
-        if 'zip_path' in locals() and os.path.exists(zip_path):
+        if not use_zip and 'zip_path' in locals() and os.path.exists(zip_path):
             try:
                 os.remove(zip_path)
                 logging.debug("清理临时ZIP文件")
