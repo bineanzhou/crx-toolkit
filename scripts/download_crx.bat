@@ -5,6 +5,16 @@ setlocal EnableDelayedExpansion
 REM 设置日志文件
 set "LOG_FILE=crx_download.log"
 
+REM 设置时间戳格式
+for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value') do set datetime=%%I
+set YYYY=%datetime:~0,4%
+set MM=%datetime:~4,2%
+set DD=%datetime:~6,2%
+set HH=%datetime:~8,2%
+set Min=%datetime:~10,2%
+set Sec=%datetime:~12,2%
+set MS=%datetime:~15,3%
+
 REM 初始化参数默认值
 set "URL="
 set "OUTPUT_DIR=output"
@@ -215,16 +225,16 @@ echo.
 exit /b 1
 
 :log
-echo [%date% %time%] %* >> "%LOG_FILE%"
-echo %*
+echo %YYYY%-%MM%-%DD% %HH%:%Min%:%Sec%,%MS% - INFO - %* >> "%LOG_FILE%"
+echo %YYYY%-%MM%-%DD% %HH%:%Min%:%Sec%,%MS% - INFO - %*
 goto :eof
 
 :log_error
-echo [%date% %time%] ERROR: %* >> "%LOG_FILE%"
-echo ERROR: %*
+echo %YYYY%-%MM%-%DD% %HH%:%Min%:%Sec%,%MS% - ERROR - %* >> "%LOG_FILE%"
+echo %YYYY%-%MM%-%DD% %HH%:%Min%:%Sec%,%MS% - ERROR - %*
 goto :eof
 
 :log_warning
-echo [%date% %time%] WARNING: %* >> "%LOG_FILE%"
-echo WARNING: %*
+echo %YYYY%-%MM%-%DD% %HH%:%Min%:%Sec%,%MS% - WARNING - %* >> "%LOG_FILE%"
+echo %YYYY%-%MM%-%DD% %HH%:%Min%:%Sec%,%MS% - WARNING - %*
 goto :eof
