@@ -1,104 +1,141 @@
-# CRX 工具库
+# CRX Toolkit
 
-## 简介
-CRX 工具库是一个支持跨平台的 Python 库，用于创建、下载和解析 CRX 文件（Chrome 扩展包格式）。该工具提供统一接口，可以在 Windows、Linux 和 macOS 上轻松操作 CRX 文件，并支持通过外部封装的批处理脚本（bat 和 sh）方便使用。
+一个跨平台的 Chrome 扩展打包工具，支持 Windows、Linux 和 macOS。
 
----
+## 功能特点
 
-## 功能
+- 支持跨平台（Windows、Linux、macOS）
+- 自动检测和安装依赖（Node.js、npm、terser）
+- JavaScript 代码混淆（使用 terser）
+- 详细的日志记录
+- 支持强制覆盖已存在的文件
+- 文件过滤（自动排除 .git、.svn 等）
+- 支持自定义私钥
 
-- **跨平台支持**：兼容 Windows、Linux 和 macOS。
-- **CRX 文件打包**：从扩展源目录生成 CRX 文件，并通过私钥进行签名。
-- **CRX 文件下载**：直接从网络下载 CRX 文件，并进行完整性校验。
-- **CRX 文件解析**：提取和分析 CRX 文件内容。
-- **命令行工具**：提供友好的 CLI 接口，快速完成操作。
-- **外部脚本支持**：封装了 bat 和 sh 脚本，便于直接调用。
-- **模块化设计**：灵活的架构，可集成到更大的项目中。
+## 安装要求
 
----
+- Python 3.6+
+- Node.js（可选，用于 JavaScript 混淆）
+- npm（可选，用于安装 terser）
 
-## 安装
+## 安装方法
 
-1. 克隆项目代码：
-   ```bash
-   git clone https://github.com/yourusername/crx_toolkit.git
-   cd crx_toolkit
-   ```
-
-2. 安装依赖：
-   ```bash
-   pip install -r requirements.txt
-   ```
-
----
-
-## 使用说明
-
-### 脚本使用
-
-#### Windows（bat 脚本）
-
-1. **打包 CRX 文件**
-创建 `pack_crx.bat` 文件：
-```bat
-@echo off
-python -m crx_toolkit.cli pack --source "%1" --key "%2" --output "%3"
-```
-使用：
-```cmd
-pack_crx.bat "扩展目录路径" "私钥文件路径" "输出目录"
-```
-
-2. **下载 CRX 文件**
-创建 `download_crx.bat` 文件：
-```bat
-@echo off
-python -m crx_toolkit.cli download --url "%1" --output "%2"
-```
-使用：
-```cmd
-download_crx.bat "下载链接" "输出目录"
-```
-
-#### Linux/macOS（sh 脚本）
-
-1. **打包 CRX 文件**
-创建 `pack_crx.sh` 文件：
 ```bash
-#!/bin/bash
-python -m crx_toolkit.cli pack --source "$1" --key "$2" --output "$3"
+pip install crx-toolkit
 ```
-使用：
+
+## 使用方法
+
+### 命令行工具
+
+1. 打包扩展：
+
 ```bash
-bash pack_crx.sh "扩展目录路径" "私钥文件路径" "输出目录"
+# 基本用法
+crx-pack -s <源目录> -k <私钥文件> -o <输出目录>
+
+# 使用混淆（需要 Node.js 和 npm）
+crx-pack -s <源目录> -k <私钥文件> -o <输出目录> --use-terser
+
+# 详细日志
+crx-pack -s <源目录> -k <私钥文件> -o <输出目录> -v
+
+# 跳过验证
+crx-pack -s <源目录> -k <私钥文件> -o <输出目录> --no-verify
 ```
 
-2. **下载 CRX 文件**
-创建 `download_crx.sh` 文件：
-```bash
-#!/bin/bash
-python -m crx_toolkit.cli download --url "$1" --output "$2"
+### Python API
+
+```python
+from crx_toolkit import pack_extension
+
+# 基本用法
+pack_extension(
+    source_dir="path/to/extension",
+    private_key_path="path/to/key.pem",
+    output_dir="path/to/output",
+    force=True,              # 覆盖已存在的文件
+    verbose=False,           # 详细日志
+    no_verify=False,         # 跳过验证
+    use_terser=False        # 使用 terser 混淆
+)
 ```
-使用：
-```bash
-bash download_crx.sh "下载链接" "输出目录"
+
+## 项目结构
+
+```
+crx-toolkit/
+├── src/
+│   └── crx_toolkit/
+│       ├── __init__.py
+│       ├── packer.py       # 核心打包逻辑
+│       └── utils/
+│           └── file_utils.py
+├── tests/                  # 测试文件
+├── scripts/                # 批处理脚本
+│   ├── pack_crx.bat       # Windows 批处理脚本
+│   └── pack_crx.sh        # Linux/macOS 脚本
+├── README.md
+├── requirements.txt
+└── setup.py
 ```
 
----
+## 开发文档
 
-## 开源协议
+### 核心模块
 
-本项目采用 MIT 开源协议，详情请参见 [LICENSE](LICENSE) 文件。
+#### packer.py
 
----
+主要功能模块，包含以下关键函数：
 
-## 贡献
+- `pack_extension()`: 打包扩展的主函数
+- `minify_js_file()`: JavaScript 文件混淆
+- `check_nodejs_installed()`: 检查 Node.js 环境
+- `install_terser()`: 安装 terser
+- `ensure_terser_available()`: 确保 terser 可用
+- `setup_logging()`: 配置日志系统
 
-欢迎贡献！请提交 issue 或 pull request，帮助我们改进工具库。
+### 环境检测和依赖管理
 
----
+1. Node.js 检测
+   - 自动检测常见安装路径
+   - 支持 Windows 和 Unix 路径
+   - PATH 环境变量检查
 
-## 联系方式
+2. Terser 管理
+   - 自动检测安装状态
+   - 支持本地和全局安装
+   - 自动安装功能
 
-如有任何问题或建议，提交Issue：[Issue](https://github.com/bineanzhou/crx-toolkit/issues)
+### 日志系统
+
+- 支持文件和控制台输出
+- 可配置详细程度（DEBUG/INFO）
+- 自动清理历史日志
+
+### 错误处理
+
+- 完整的异常捕获和处理
+- 详细的错误信息记录
+- 用户友好的错误提示
+
+## 贡献指南
+
+1. Fork 项目
+2. 创建特性分支
+3. 提交更改
+4. 推送到分支
+5. 创建 Pull Request
+
+## 许可证
+
+MIT License
+
+## 更新日志
+
+### v1.0.0
+- 初始发布
+- 基本打包功能
+- JavaScript 混淆支持
+- 跨平台支持
 

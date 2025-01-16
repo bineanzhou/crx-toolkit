@@ -1,70 +1,100 @@
-import click
-import logging
-import json
-from urllib.parse import urlparse, unquote
-from .packer import pack_extension
-from .downloader import download_crx
 import os
+import sys
+import argparse
+import logging
+from typing import List, Optional
+from .packer import pack_extension, setup_logging
+from .downloader import download_crx
 
-@click.group()
-def cli():
-    """CRX 工具库命令行工具"""
-    pass
+def clean_logs():
+    """清理所有日志文件"""
+    log_files = [
+        'crx_pack.log',
+        'crx_download.log',  # 下载相关的日志
+        'crx_debug.log'      # 调试日志
+    ]
+    
+    for log_file in log_files:
+        try:
+            if os.path.exists(log_file):
+                try:
+                    # 先尝试关闭所有日志处理器
+                    for handler in logging.root.handlers[:]:
+                        handler.close()
+                        logging.root.removeHandler(handler)
+                except:
+                    pass
+                    
+                # 然后删除文件
+                os.remove(log_file)
+                print(f"已清理历史日志文件: {log_file}")  # 使用 print 而不是 logging
+        except Exception as e:
+            print(f"清理日志文件 {log_file} 时发生错误: {str(e)}")  # 使用 print 而不是 logging
 
-@cli.command()
-@click.option('--source', required=True, help='扩展源目录路径')
-@click.option('--key', required=True, help='私钥文件路径')
-@click.option('--output', default='output', help='输出目录路径')
-@click.option('--force', is_flag=True, help='强制覆盖已存在的文件')
-@click.option('--verbose', is_flag=True, help='启用详细输出')
-@click.option('--no-verify', is_flag=True, help='跳过签名验证')
-@click.option('--use-terser', is_flag=True, help='使用 terser 压缩 JavaScript 代码')
-def pack(source, key, output, force, verbose, no_verify, use_terser):
-    """打包 Chrome 扩展为 CRX 文件"""
-    try:
-        result = pack_extension(
-            source_dir=source,
-            private_key_path=key,
-            output_dir=output,
-            force=force,
-            verbose=verbose,
-            no_verify=no_verify,
-            use_terser=use_terser
-        )
-        click.echo(f"打包成功: {result}")
-    except Exception as e:
-        click.echo(f"打包失败: {str(e)}", err=True)
-        raise click.Abort()
-
-@cli.command()
-@click.option('--url', required=True, help='CRX file URL')
-@click.option('--output', required=True, help='Output directory')
-@click.option('--proxy', help='Proxy server (e.g., http://127.0.0.1:7890)')
-def download(url, output, proxy):
-    """Download a CRX file from URL"""
-    try:
-        # URL 解码和清理
-        decoded_url = unquote(url).strip('"\'')
+def main(args: Optional[List[str]] = None) -> int:
+    """CLI 入口函数"""
+    if args is None:
+        args = sys.argv[1:]
         
-        # 创建输出目录
-        os.makedirs(output, exist_ok=True)
+    parser = argparse.ArgumentParser(description='Chrome扩展工具')
+    subparsers = parser.add_subparsers(dest='command', help='可用命令')
+    
+    # pack 命令
+    pack_parser = subparsers.add_parser('pack', help='打包扩展')
+    pack_parser.add_argument('-s', '--source', required=True, help='扩展源目录路径')
+    pack_parser.add_argument('-k', '--key', required=True, help='私钥文件路径')
+    pack_parser.add_argument('-o', '--output', required=True, help='输出目录路径')
+    pack_parser.add_argument('--no-force', action='store_true', help='不覆盖已存在的文件')
+    pack_parser.add_argument('-v', '--verbose', action='store_true', help='启用详细日志')
+    pack_parser.add_argument('--no-verify', action='store_true', help='跳过签名验证')
+    pack_parser.add_argument('--use-terser', action='store_true', help='使用terser混淆JavaScript代码')
+    
+    # download 命令
+    download_parser = subparsers.add_parser('download', help='下载扩展')
+    download_parser.add_argument('--url', required=True, help='扩展下载链接')
+    download_parser.add_argument('-o', '--output', required=True, help='输出目录路径')
+    download_parser.add_argument('--no-force', action='store_true', help='不覆盖已存在的文件')
+    download_parser.add_argument('-v', '--verbose', action='store_true', help='启用详细日志')
+    download_parser.add_argument('--no-verify', action='store_true', help='跳过签名验证')
+    
+    parsed_args = parser.parse_args(args)
+    
+    if not parsed_args.command:
+        parser.print_help()
+        return 1
         
-        result = download_crx(decoded_url, output, proxy=proxy)
-        click.echo(f"Successfully downloaded CRX file: {result}")
-    except Exception as e:
-        click.echo(f"Error: {str(e)}", err=True)
-        raise click.Abort()
-
-@cli.command()
-@click.option('--file', required=True, help='CRX file to parse')
-def parse(file):
-    """Parse and display CRX file information"""
     try:
-        result = parse_crx(file)
-        click.echo(json.dumps(result, indent=2))
+        # 根据命令设置日志文件名
+        log_file = 'crx_pack.log' if parsed_args.command == 'pack' else 'crx_download.log'
+        
+        # 清理日志并设置日志配置
+        clean_logs()
+        setup_logging(verbose=parsed_args.verbose, log_file=log_file)
+        
+        if parsed_args.command == 'pack':
+            pack_extension(
+                source_dir=parsed_args.source,
+                private_key_path=parsed_args.key,
+                output_dir=parsed_args.output,
+                force=not parsed_args.no_force,
+                verbose=parsed_args.verbose,
+                no_verify=parsed_args.no_verify,
+                use_terser=parsed_args.use_terser
+            )
+        elif parsed_args.command == 'download':
+            download_crx(
+                url=parsed_args.url,
+                output_dir=parsed_args.output,
+                force=not parsed_args.no_force,
+                verbose=parsed_args.verbose,
+                no_verify=parsed_args.no_verify
+            )
+            
+        return 0
+        
     except Exception as e:
-        click.echo(f"Error: {str(e)}", err=True)
-        raise click.Abort()
+        logging.error(str(e))
+        return 1
 
 if __name__ == '__main__':
-    cli() 
+    sys.exit(main()) 

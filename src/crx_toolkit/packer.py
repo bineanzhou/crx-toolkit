@@ -10,14 +10,19 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import hashes
 from .utils.file_utils import ensure_dir
 
-def setup_logging(verbose: bool = False):
-    """配置日志"""
+def setup_logging(verbose: bool = False, log_file: str = 'crx_pack.log'):
+    """配置日志
+    
+    Args:
+        verbose: 是否启用详细日志
+        log_file: 日志文件名
+    """
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler('crx_pack.log', encoding='utf-8'),
+            logging.FileHandler(log_file, encoding='utf-8'),
             logging.StreamHandler()
         ]
     )
@@ -260,8 +265,8 @@ def pack_extension(
     Returns:
         str: 生成的CRX文件路径
     """
-    # 设置日志级别
-    setup_logging(verbose)
+    # 设置日志配置
+    setup_logging(verbose=verbose, log_file='crx_pack.log')
     
     try:
         # 如果启用了terser，确保其可用
