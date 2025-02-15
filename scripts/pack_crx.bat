@@ -87,16 +87,14 @@ if "!_arg:~0,1!" == "-" (
     goto :parse_args
 )
 
-REM 处理位置参数
+REM 检查第一个参数是否为扩展目录
 if not defined SOURCE_DIR (
+    if "%~1" == "" (
+        call :log_error "缺少必要参数: 扩展目录"
+        goto :show_help
+    )
     set "SOURCE_DIR=%~1"
     call :log "设置源目录: !SOURCE_DIR!"
-    shift
-    goto :parse_args
-)
-if not defined KEY_FILE (
-    set "KEY_FILE=%~1"
-    call :log "设置私钥文件: !KEY_FILE!"
     shift
     goto :parse_args
 )
@@ -115,10 +113,26 @@ if not defined SOURCE_DIR (
     goto :show_help
 )
 
-REM 如果是crx格式且没有提供私钥，显示错误
-if "!FORMAT!" == "crx" if not defined KEY_FILE (
-    call :log_error "打包为crx格式时必须提供私钥文件"
-    goto :show_help
+REM 如果是crx格式且没有提供私钥，自动创建私钥文件
+if "%FORMAT%"=="crx" if "%KEY_FILE%"=="" (
+    set "KEY_FILE=%CD%\key.pem"
+    call :log "未提供私钥文件，将使用默认私钥文件: %KEY_FILE%"
+    
+    REM 如果私钥文件不存在，则创建新的私钥文件
+    if not exist "%KEY_FILE%" (
+        call :log "私钥文件不存在，将创建新的私钥文件"
+        
+        REM 使用 openssl 生成私钥
+        openssl genpkey -algorithm RSA -out "%KEY_FILE%" -pkeyopt rsa_keygen_bits:2048
+        if errorlevel 1 (
+            call :log_error "生成私钥文件失败"
+            exit /b 1
+        )
+        
+        call :log "成功生成私钥文件: %KEY_FILE%"
+    ) else (
+        call :log "使用已存在的私钥文件: %KEY_FILE%"
+    )
 )
 
 REM 记录最终参数
@@ -292,15 +306,15 @@ echo.
 echo Chrome扩展打包工具
 echo.
 echo 用法:
-echo   %~n0 [选项] ^<source^> [key]
+echo   %~n0 ^<扩展目录^> [选项]
 echo.
 echo 参数:
-echo   source          扩展源目录路径
-echo   key            私钥文件路径（仅在打包为crx格式时需要）
+echo   扩展目录        Chrome扩展的源目录路径
 echo.
 echo 选项:
 echo   -h, --help         显示帮助信息
 echo   -o, --output       指定输出目录 (默认: output)
+echo   -k, --key          指定私钥文件路径（仅在打包为crx格式时需要）
 echo   --format          打包格式: crx 或 zip (默认: crx)
 echo   -d, --debug        启用详细输出模式 (--verbose)
 echo   -f, --force        强制重新打包
@@ -308,9 +322,10 @@ echo   --no-verify        禁用签名验证
 echo   --use-terser      启用JavaScript代码混淆
 echo.
 echo 示例:
-echo   %~n0 "扩展目录" "private.pem"
-echo   %~n0 -o "my_crx" "扩展目录" "private.pem"
-echo   %~n0 --format zip "扩展目录"
-echo   %~n0 -d --use-terser "扩展目录" "private.pem"
+echo   %~n0 "扩展目录"
+echo   %~n0 "扩展目录" -k "private.pem"
+echo   %~n0 "扩展目录" -o "my_crx" -k "private.pem"
+echo   %~n0 "扩展目录" --format zip
+echo   %~n0 "扩展目录" -d --use-terser -k "private.pem"
 echo.
 exit /b 1

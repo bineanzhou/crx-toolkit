@@ -5,12 +5,13 @@
 ## 功能特点
 
 - 支持跨平台（Windows、Linux、macOS）
-- 自动检测和安装依赖（Node.js、npm、terser）
-- JavaScript 代码混淆（使用 terser）
-- 详细的日志记录
+- 支持 CRX 文件的打包、下载和解析
+- 支持从 Chrome Web Store 直接下载扩展
+- 详细的日志记录和错误处理
 - 支持强制覆盖已存在的文件
-- 文件过滤（自动排除 .git、.svn 等）
-- 支持自定义私钥
+- 支持多种打包格式（CRX、ZIP）
+- 支持自定义私钥签名
+- 提供完整的命令行工具和 Python API
 
 ## 安装要求
 
@@ -32,16 +33,30 @@ pip install crx-toolkit
 
 ```bash
 # 基本用法
-crx-pack -s <源目录> -k <私钥文件> -o <输出目录>
+python -m crx_toolkit.cli pack -s <源目录> -k <私钥文件> -o <输出目录>
 
-# 使用混淆（需要 Node.js 和 npm）
-crx-pack -s <源目录> -k <私钥文件> -o <输出目录> --use-terser
+# 指定打包格式（crx 或 zip）
+python -m crx_toolkit.cli pack -s <源目录> -k <私钥文件> -o <输出目录> --format crx
 
-# 详细日志
-crx-pack -s <源目录> -k <私钥文件> -o <输出目录> -v
+# 强制覆盖已存在文件
+python -m crx_toolkit.cli pack -s <源目录> -k <私钥文件> -o <输出目录> -f
 
-# 跳过验证
-crx-pack -s <源目录> -k <私钥文件> -o <输出目录> --no-verify
+# 启用详细日志
+python -m crx_toolkit.cli pack -s <源目录> -k <私钥文件> -o <输出目录> -v
+```
+
+2. 下载扩展：
+
+```bash
+# 从 Chrome Web Store 下载
+python -m crx_toolkit.cli download <扩展ID或URL> -o <输出目录>
+```
+
+3. 解析 CRX：
+
+```bash
+# 解析 CRX 文件信息
+python -m crx_toolkit.cli parse <CRX文件路径>
 ```
 
 ### Python API
@@ -68,16 +83,27 @@ crx-toolkit/
 ├── src/
 │   └── crx_toolkit/
 │       ├── __init__.py
-│       ├── packer.py       # 核心打包逻辑
-│       └── utils/
-│           └── file_utils.py
-├── tests/                  # 测试文件
-├── scripts/                # 批处理脚本
-│   ├── pack_crx.bat       # Windows 批处理脚本
-│   └── pack_crx.sh        # Linux/macOS 脚本
-├── README.md
-├── requirements.txt
-└── setup.py
+│       ├── cli.py         # 命令行接口
+│       ├── packer.py      # 打包功能
+│       ├── downloader.py  # 下载功能
+│       ├── parser.py      # CRX解析
+│       ├── signer.py      # 签名功能
+│       └── utils/         # 工具函数
+├── docs/                  # 文档目录
+│   ├── CONTRIBUTING.md    # 贡献指南
+│   ├── api.md            # API文档
+│   ├── cli.md            # CLI使用文档
+│   └── development.md     # 开发文档
+├── scripts/               # 脚本目录
+│   ├── download_crx.bat   # Windows下载脚本
+│   ├── download_crx.sh    # Unix下载脚本
+│   ├── pack_crx.bat      # Windows打包脚本
+│   ├── pack_crx.sh       # Unix打包脚本
+│   ├── parse_crx.bat     # Windows解析脚本
+│   └── parse_crx.sh      # Unix解析脚本
+├── README.md             # 项目说明
+├── requirements.txt      # 依赖清单
+└── setup.py             # 安装配置
 ```
 
 ## 开发文档

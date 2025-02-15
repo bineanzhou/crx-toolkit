@@ -3,17 +3,26 @@
 # 设置日志文件
 LOG_FILE="crx_download.log"
 
+# 设置时间戳格式
+YYYY=$(date '+%Y')
+MM=$(date '+%m')
+DD=$(date '+%d')
+HH=$(date '+%H')
+Min=$(date '+%M')
+Sec=$(date '+%S')
+MS=$(date '+%N' | cut -c1-3)
+
 # 日志函数
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+    echo "$YYYY-$MM-$DD $HH:$Min:$Sec,$MS - INFO - $*" | tee -a "$LOG_FILE"
 }
 
 log_error() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" | tee -a "$LOG_FILE"
+    echo "$YYYY-$MM-$DD $HH:$Min:$Sec,$MS - ERROR - $*" | tee -a "$LOG_FILE"
 }
 
 log_warning() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: $*" | tee -a "$LOG_FILE"
+    echo "$YYYY-$MM-$DD $HH:$Min:$Sec,$MS - WARNING - $*" | tee -a "$LOG_FILE"
 }
 
 # 显示帮助信息
@@ -93,10 +102,19 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             if [ -z "$URL" ]; then
+                # 保存完整的URL，保留所有特殊字符
                 URL="$1"
-                log "设置下载URL: $URL"
+                log "原始URL: $URL"
+                
+                # 移除外层引号
+                URL="${URL#\"}"
+                URL="${URL%\"}"
+                URL="${URL#\'}"
+                URL="${URL%\'}"
+                
+                log "处理后的URL: $URL"
             else
-                log_warning "跳过多余参数: $1"
+                log_warning "URL已设置，跳过剩余参数: $1"
             fi
             shift
             ;;
@@ -118,9 +136,14 @@ log "输出目录: $OUTPUT_DIR"
 [ -n "$FORCE" ] && log "强制下载: 已启用"
 [ -n "$NO_VERIFY" ] && log "SSL验证: 已禁用"
 
+# 获取脚本所在目录的上级目录(项目根目录)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+log "项目根目录: $ROOT_DIR"
+
 # 设置虚拟环境
 log "正在设置虚拟环境..."
-python3 scripts/venv_manager.py
+python3 "$ROOT_DIR/scripts/venv_manager.py"
 if [ $? -ne 0 ]; then
     log_error "虚拟环境设置失败"
     echo "Error setting up virtual environment"
@@ -129,7 +152,7 @@ fi
 
 # 获取虚拟环境Python路径
 log "获取Python解释器路径..."
-VENV_PYTHON=$(python3 -c "from scripts.venv_manager import get_venv_python; print(get_venv_python())")
+VENV_PYTHON=$(python3 -c "import os; import sys; sys.path.insert(0, os.path.join('$ROOT_DIR')); from scripts.venv_manager import get_venv_python; print(get_venv_python())")
 if [ $? -ne 0 ]; then
     log_error "获取Python路径失败"
     exit 1
@@ -140,7 +163,7 @@ log "使用Python路径: $VENV_PYTHON"
 PY_ARGS="download"
 log "构建Python命令参数..."
 
-# 添加必要参数
+# 添加必要参数，使用引号包裹参数值以处理特殊字符
 PY_ARGS="$PY_ARGS --url=\"$URL\" --output=\"$OUTPUT_DIR\""
 [ -n "$PROXY" ] && PY_ARGS="$PY_ARGS --proxy=\"$PROXY\""
 [ -n "$DEBUG" ] && PY_ARGS="$PY_ARGS $DEBUG"
@@ -168,4 +191,4 @@ fi
 log "扩展下载成功"
 log "=== 下载任务结束 ==="
 echo "Successfully downloaded extension"
-exit 0 
+exit 0
