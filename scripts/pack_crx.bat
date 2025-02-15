@@ -20,12 +20,74 @@ set "NO_VERIFY="
 set "USE_TERSER="
 set "FORMAT=crx"
 
+REM 日志函数
+:log
+echo [%date% %time%] %* >> "%LOG_FILE%"
+echo %*
+goto :eof
+
+:log_error
+echo [%date% %time%] ERROR: %* >> "%LOG_FILE%"
+echo ERROR: %*
+goto :eof
+
+:log_warning
+echo [%date% %time%] WARNING: %* >> "%LOG_FILE%"
+echo WARNING: %*
+goto :eof
+
+:show_help
+echo.
+echo Chrome扩展打包工具
+echo.
+echo 用法:
+echo   %~n0 ^<扩展目录^> [选项]
+echo.
+echo 参数:
+echo   扩展目录        Chrome扩展的源目录路径
+echo.
+echo 选项:
+echo   -h, --help         显示帮助信息
+echo   -o, --output       指定输出目录 (默认: output)
+echo   -k, --key          指定私钥文件路径（仅在打包为crx格式时需要）
+echo   --format          打包格式: crx 或 zip (默认: crx)
+echo   -d, --debug        启用详细输出模式 (--verbose)
+echo   -f, --force        强制重新打包
+echo   --no-verify        禁用签名验证
+echo   --use-terser      启用JavaScript代码混淆
+echo.
+echo 示例:
+echo   %~n0 "扩展目录"
+echo   %~n0 "扩展目录" -k "private.pem"
+echo   %~n0 "扩展目录" -o "my_crx" -k "private.pem"
+echo   %~n0 "扩展目录" --format zip
+echo   %~n0 "扩展目录" -d --use-terser -k "private.pem"
+echo.
+exit /b 1
+
 REM 记录开始执行
 call :log "=== 开始解析参数 ==="
 call :log "原始参数列表: %*"
 call :log "项目根目录: !ROOT_DIR!"
 
-REM 解析命令行参数
+REM 检查是否有帮助选项
+for %%a in (%*) do (
+    if "%%a" == "-h" goto :show_help
+    if "%%a" == "--help" goto :show_help
+)
+
+REM 检查第一个参数是否为扩展目录
+if "%~1"=="" (
+    call :log_error "缺少必要参数: 扩展目录"
+    goto :show_help
+)
+
+REM 设置源目录
+set "SOURCE_DIR=%~1"
+call :log "设置源目录: !SOURCE_DIR!"
+shift
+
+REM 解析命令行选项
 :parse_args
 if "%~1"=="" goto :check_args
 
@@ -70,10 +132,28 @@ if "!_arg:~0,1!" == "-" (
         shift & shift
         goto :parse_args
     )
+    if /i "!_arg!" == "-k" (
+        if "%~2" == "" (
+            call :log_error "-k 选项需要一个参数"
+            goto :show_help
+        )
+        set "KEY_FILE=%~2"
+        call :log "设置私钥文件: !KEY_FILE!"
+        shift & shift
+        goto :parse_args
+    )
+    if /i "!_arg!" == "--key" (
+        if "%~2" == "" (
+            call :log_error "--key 选项需要一个参数"
+            goto :show_help
+        )
+        set "KEY_FILE=%~2"
+        call :log "设置私钥文件: !KEY_FILE!"
+        shift & shift
+        goto :parse_args
+    )
     
     REM 处理开关选项
-    if /i "!_arg!" == "-h" set "SHOW_HELP=1" & shift & goto :parse_args
-    if /i "!_arg!" == "--help" set "SHOW_HELP=1" & shift & goto :parse_args
     if /i "!_arg!" == "-d" set "DEBUG=--verbose" & call :log "启用详细输出模式" & shift & goto :parse_args
     if /i "!_arg!" == "--debug" set "DEBUG=--verbose" & call :log "启用详细输出模式" & shift & goto :parse_args
     if /i "!_arg!" == "-f" set "FORCE=--force" & call :log "启用强制打包" & shift & goto :parse_args
@@ -87,26 +167,12 @@ if "!_arg:~0,1!" == "-" (
     goto :parse_args
 )
 
-REM 检查第一个参数是否为扩展目录
-if not defined SOURCE_DIR (
-    if "%~1" == "" (
-        call :log_error "缺少必要参数: 扩展目录"
-        goto :show_help
-    )
-    set "SOURCE_DIR=%~1"
-    call :log "设置源目录: !SOURCE_DIR!"
-    shift
-    goto :parse_args
-)
-
 REM 跳过多余的参数
 call :log_warning "跳过多余参数: %~1"
 shift
 goto :parse_args
 
 :check_args
-if defined SHOW_HELP goto :show_help
-
 REM 检查必要参数
 if not defined SOURCE_DIR (
     call :log_error "缺少必要参数: 源目录"
@@ -210,6 +276,80 @@ if defined KEY_FILE (
         exit /b 1
     )
 )
+
+REM 处理输出目录路径
+if "!OUTPUT_DIR:~1,1!" == ":" (
+    REM 已经是绝对路径
+    set "ABS_OUTPUT_DIR=!OUTPUT_DIR!"
+) else (
+    REM 相对路径转绝对路径
+    set "ABS_OUTPUT_DIR=!CURR_DIR!\!OUTPUT_DIR!"
+)
+
+if not exist "!ABS_OUTPUT_DIR!" mkdir "!ABS_OUTPUT_DIR!"
+pushd "!ABS_OUTPUT_DIR!" 2>nul && (
+    set "OUTPUT_DIR=!CD!"
+    popd
+) || (
+    call :log_error "无法创建输出目录: !OUTPUT_DIR!"
+    exit /b 1
+)
+
+REM 记录路径信息
+call :log "路径信息:"
+call :log "  当前目录: !CURR_DIR!"
+call :log "  源目录: !SOURCE_DIR!"
+if defined KEY_FILE call :log "  私钥文件: !KEY_FILE!"
+call :log "  输出目录: !OUTPUT_DIR!"
+
+REM 添加必要参数，使用双引号包裹路径
+set "PY_ARGS=!PY_ARGS! --source "!SOURCE_DIR!" --output "!OUTPUT_DIR!""
+
+REM 添加私钥参数（如果提供）
+if defined KEY_FILE set "PY_ARGS=!PY_ARGS! --key "!KEY_FILE!""
+
+REM 添加格式参数
+set "PY_ARGS=!PY_ARGS! --format !FORMAT!"
+
+REM 添加可选参数
+if defined DEBUG (
+    set "PY_ARGS=!PY_ARGS! --verbose"
+    call :log "启用详细输出模式"
+)
+if defined FORCE (
+    set "PY_ARGS=!PY_ARGS! --force"
+    call :log "启用强制模式"
+)
+if defined NO_VERIFY (
+    set "PY_ARGS=!PY_ARGS! --no-verify"
+    call :log "禁用验证"
+)
+if defined USE_TERSER (
+    set "PY_ARGS=!PY_ARGS! --use-terser"
+    call :log "启用JS代码混淆"
+)
+
+REM 执行Python命令
+call :log "执行命令: "!VENV_PYTHON!" -m crx_toolkit.cli !PY_ARGS!"
+"!VENV_PYTHON!" -m crx_toolkit.cli !PY_ARGS!
+
+if errorlevel 1 (
+    call :log_error "打包失败，错误码: !errorlevel!"
+    echo Error occurred while packing extension
+    exit /b 1
+)
+
+REM 检查输出结果
+if not exist "!OUTPUT_DIR!\*" (
+    call :log_error "打包可能成功但输出目录为空: !OUTPUT_DIR!"
+    echo Warning: Output directory is empty
+    exit /b 1
+)
+
+call :log "扩展打包成功"
+call :log "=== 打包任务结束 ==="
+echo Successfully packed extension
+exit /b 0
 
 REM 处理输出目录路径
 if "!OUTPUT_DIR:~1,1!" == ":" (

@@ -66,6 +66,13 @@ log "=== 开始解析参数 ==="
 log "原始参数列表: $*"
 log "项目根目录: $ROOT_DIR"
 
+# 检查是否有帮助选项
+for arg in "$@"; do
+    if [ "$arg" = "-h" ] || [ "$arg" = "--help" ]; then
+        show_help
+    fi
+done
+
 # 检查第一个参数是否为扩展目录
 if [ $# -eq 0 ]; then
     log_error "缺少必要参数: 扩展目录"
