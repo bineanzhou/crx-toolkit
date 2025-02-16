@@ -7,22 +7,30 @@
 - 支持跨平台（Windows、Linux、macOS）
 - 支持 CRX 文件的打包、下载和解析
 - 支持从 Chrome Web Store 直接下载扩展
-- 详细的日志记录和错误处理
-- 支持强制覆盖已存在的文件
 - 支持多种打包格式（CRX、ZIP）
-- 支持自定义私钥签名
-- 提供完整的命令行工具和 Python API
+- 支持自定义私钥签名和签名验证
+- 支持 JavaScript 代码混淆（通过 terser）
+- 提供详细的日志记录和错误处理
+- 提供命令行工具和 Python API
+- 支持代理设置（下载时）
+- 支持强制覆盖已存在文件
 
 ## 安装要求
 
 - Python 3.6+
-- Node.js（可选，用于 JavaScript 混淆）
-- npm（可选，用于安装 terser）
+- OpenSSL（用于生成和处理私钥）
+- Node.js 和 npm（可选，仅在需要 JavaScript 混淆时需要）
 
 ## 安装方法
 
 ```bash
+# 通过 pip 安装
 pip install crx-toolkit
+
+# 或从源码安装
+git clone https://github.com/yourusername/crx-toolkit.git
+cd crx-toolkit
+pip install -e .
 ```
 
 ## 使用方法
@@ -32,48 +40,68 @@ pip install crx-toolkit
 1. 打包扩展：
 
 ```bash
-# 基本用法
-python -m crx_toolkit.cli pack -s <源目录> -k <私钥文件> -o <输出目录>
+# 基本用法（自动生成私钥）
+pack_crx.sh <扩展目录>
 
-# 指定打包格式（crx 或 zip）
-python -m crx_toolkit.cli pack -s <源目录> -k <私钥文件> -o <输出目录> --format crx
+# 指定私钥和输出目录
+pack_crx.sh <扩展目录> -k <私钥文件> -o <输出目录>
 
-# 强制覆盖已存在文件
-python -m crx_toolkit.cli pack -s <源目录> -k <私钥文件> -o <输出目录> -f
+# 打包为 ZIP 格式
+pack_crx.sh <扩展目录> --format zip
 
-# 启用详细日志
-python -m crx_toolkit.cli pack -s <源目录> -k <私钥文件> -o <输出目录> -v
+# 启用 JavaScript 混淆
+pack_crx.sh <扩展目录> --use-terser
+
+# 更多选项
+pack_crx.sh --help
 ```
 
 2. 下载扩展：
 
 ```bash
 # 从 Chrome Web Store 下载
-python -m crx_toolkit.cli download <扩展ID或URL> -o <输出目录>
+download_crx.sh <扩展ID或URL>
+
+# 使用代理
+download_crx.sh -p "http://127.0.0.1:7890" <扩展URL>
+
+# 指定输出目录
+download_crx.sh -o <输出目录> <扩展URL>
 ```
 
 3. 解析 CRX：
 
 ```bash
 # 解析 CRX 文件信息
-python -m crx_toolkit.cli parse <CRX文件路径>
+parse_crx.sh <CRX文件路径>
 ```
 
 ### Python API
 
 ```python
-from crx_toolkit import pack_extension
+from crx_toolkit import pack_extension, download_extension, parse_crx
 
-# 基本用法
+# 打包扩展
 pack_extension(
     source_dir="path/to/extension",
-    private_key_path="path/to/key.pem",
+    private_key_path="path/to/key.pem",  # 可选，不提供时自动生成
     output_dir="path/to/output",
     force=True,              # 覆盖已存在的文件
     verbose=False,           # 详细日志
-    no_verify=False,         # 跳过验证
-    use_terser=False        # 使用 terser 混淆
+    no_verify=False,         # 跳过签名验证
+    use_terser=False,        # 使用 terser 混淆
+    use_zip=False           # 使用 ZIP 格式
 )
+
+# 下载扩展
+download_extension(
+    url="https://chrome.google.com/webstore/detail/extension-id",
+    output_dir="path/to/output",
+    proxy="http://127.0.0.1:7890"  # 可选
+)
+
+# 解析 CRX
+parse_crx("path/to/extension.crx")
 ```
 
 ## 项目结构
@@ -98,70 +126,7 @@ crx-toolkit/
 │   ├── download_crx.bat   # Windows下载脚本
 │   ├── download_crx.sh    # Unix下载脚本
 │   ├── pack_crx.bat      # Windows打包脚本
-│   ├── pack_crx.sh       # Unix打包脚本
-│   ├── parse_crx.bat     # Windows解析脚本
-│   └── parse_crx.sh      # Unix解析脚本
-├── README.md             # 项目说明
-├── requirements.txt      # 依赖清单
-└── setup.py             # 安装配置
+│   └── pack_crx.sh       # Unix打包脚本
+└── README.md             # 项目说明
 ```
-
-## 开发文档
-
-### 核心模块
-
-#### packer.py
-
-主要功能模块，包含以下关键函数：
-
-- `pack_extension()`: 打包扩展的主函数
-- `minify_js_file()`: JavaScript 文件混淆
-- `check_nodejs_installed()`: 检查 Node.js 环境
-- `install_terser()`: 安装 terser
-- `ensure_terser_available()`: 确保 terser 可用
-- `setup_logging()`: 配置日志系统
-
-### 环境检测和依赖管理
-
-1. Node.js 检测
-   - 自动检测常见安装路径
-   - 支持 Windows 和 Unix 路径
-   - PATH 环境变量检查
-
-2. Terser 管理
-   - 自动检测安装状态
-   - 支持本地和全局安装
-   - 自动安装功能
-
-### 日志系统
-
-- 支持文件和控制台输出
-- 可配置详细程度（DEBUG/INFO）
-- 自动清理历史日志
-
-### 错误处理
-
-- 完整的异常捕获和处理
-- 详细的错误信息记录
-- 用户友好的错误提示
-
-## 贡献指南
-
-1. Fork 项目
-2. 创建特性分支
-3. 提交更改
-4. 推送到分支
-5. 创建 Pull Request
-
-## 许可证
-
-MIT License
-
-## 更新日志
-
-### v1.0.0
-- 初始发布
-- 基本打包功能
-- JavaScript 混淆支持
-- 跨平台支持
 
